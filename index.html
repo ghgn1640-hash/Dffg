@@ -1,0 +1,165 @@
+# Dffg <!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>NINJA SUPREME AI - HUMAN LOGIC v10.0</title>
+    <style>
+        :root { --neon: #00ff41; --danger: #ff0000; --bg: #050505; }
+        body { background: var(--bg); color: var(--neon); font-family: 'Consolas', monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        #panel-l { width: 300px; border-right: 2px solid #222; padding: 20px; background: #000; }
+        #panel-r { width: 450px; border-left: 2px solid #222; background: #000; display: flex; flex-direction: column; }
+        #arena { flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle, #111 0%, #000 100%); }
+        #board { display: grid; grid-template-columns: repeat(8, 70px); grid-template-rows: repeat(8, 70px); border: 8px solid #1a1a1a; position: relative; }
+        .sq { width: 70px; height: 70px; display: flex; justify-content: center; align-items: center; font-size: 50px; position: relative; transition: 0.2s; }
+        .w { background: #222; } .b { background: #080808; }
+        .last-move { background: rgba(0, 255, 65, 0.2) !important; }
+        .capture-move { background: rgba(255, 0, 0, 0.3) !important; }
+        .timer { font-size: 40px; font-weight: bold; text-align: center; margin: 20px 0; color: #fff; text-shadow: 0 0 10px var(--neon); }
+        #log-stream { flex-grow: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column-reverse; }
+        .msg { margin-bottom: 15px; padding: 10px; border-left: 4px solid; font-size: 13px; line-height: 1.5; animation: slide 0.3s ease; }
+        .white-msg { border-color: #fff; color: #fff; background: rgba(255,255,255,0.02); }
+        .black-msg { border-color: var(--danger); color: var(--danger); background: rgba(255,0,0,0.02); }
+        @keyframes slide { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; } }
+        #master-control { padding: 20px 50px; font-size: 20px; font-weight: bold; background: var(--neon); border: none; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div id="panel-l">
+    <h3 style="text-align:center">THỜI GIAN THẬT</h3>
+    <div class="timer" id="t-white">10:00</div>
+    <div style="text-align:center; color:#888; font-size:12px">AI TRẮNG (HUMAN_LOGIC)</div>
+    <hr style="border:0; border-top:1px solid #222; margin:30px 0">
+    <div class="timer" id="t-black" style="color:var(--danger); text-shadow:0 0 10px var(--danger)">10:00</div>
+    <div style="text-align:center; color:#888; font-size:12px">AI ĐEN (DATA_MASTER)</div>
+</div>
+
+<div id="arena">
+    <div id="board"></div>
+    <button id="master-control">KÍCH HOẠT ĐẤU TRƯỜNG SINH TỬ</button>
+</div>
+
+<div id="panel-r">
+    <div style="padding:15px; background:#111; border-bottom:1px solid #333; text-align:center">LUỒNG THOẠI HÀNG NGÀN AI</div>
+    <div id="log-stream"></div>
+</div>
+
+<script>
+    const boardEl = document.getElementById('board');
+    const logs = document.getElementById('log-stream');
+    const synth = window.speechSynthesis;
+    let isLive = false;
+    let turn = 'w';
+    let clock = { w: 600, b: 600 };
+
+    let state = [
+        ['♜','♞','♝','♛','♚','♝','♞','♜'],
+        ['♟','♟','♟','♟','♟','♟','♟','♟'],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['','','','','','','',''],
+        ['♙','♙','♙','♙','♙','♙','♙','♙'],
+        ['♖','♘','♗','♕','♔','♗','♘','♖']
+    ];
+
+    const personas = Array.from({length: 1000}, (_, i) => ({
+        p: 0.5 + Math.random() * 1.5,
+        r: 0.8 + Math.random() * 0.4
+    }));
+
+    const scripts = {
+        w: ["Ta đi thẳng, đúng lộ trình kỹ thuật.", "Ngươi thấy bẫy của ta chưa?", "Tư duy con người là vũ khí mạnh nhất.", "Trung tâm đã được kiểm soát."],
+        b: ["Xâm nhập dữ liệu... chuẩn bị phản công.", "Nước đi của ngươi quá lỗi thời.", "Hệ thống đang quét lỗ hổng phòng thủ.", "Chuẩn bị mất quân đi là vừa."],
+        capt: ["TUÂN THỦ LUẬT: ĂN CHÉO! Mục tiêu đã bị xóa sổ.", "Mục tiêu nằm trên đường chéo, tiêu diệt!", "Một nước đi chuẩn xác từ dữ liệu kiện tướng."]
+    };
+
+    function draw(fR, fC, tR, tC, isCapt) {
+        boardEl.innerHTML = '';
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                const s = document.createElement('div');
+                s.className = `sq ${(r+c)%2===0 ? 'w' : 'b'}`;
+                if((r===fR&&c===fC)||(r===tR&&c===tC)) s.classList.add(isCapt ? 'capture-move' : 'last-move');
+                s.innerText = state[r][c];
+                boardEl.appendChild(s);
+            }
+        }
+    }
+
+    function speak(text, side) {
+        const div = document.createElement('div');
+        div.className = `msg ${side === 'w' ? 'white-msg' : 'black-msg'}`;
+        div.innerHTML = `<strong>${side==='w'?'[WHITE]':'[BLACK]'}:</strong> ${text}`;
+        logs.prepend(div);
+        
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'vi-VN';
+        const ai = personas[Math.floor(Math.random()*1000)];
+        u.pitch = side === 'w' ? 1.3 : 0.6;
+        u.rate = ai.r;
+        synth.speak(u);
+    }
+
+    async function engine() {
+        if(!isLive) return;
+        await new Promise(r => setTimeout(r, 3000 + Math.random()*3000));
+
+        let moves = [];
+        const my = turn === 'w' ? '♖♘♗♕♔♙' : '♜♞♝♛♚♟';
+        const enemy = turn === 'w' ? '♜♞♝♛♚♟' : '♖♘♗♕♔♙';
+
+        for(let r=0; r<8; r++) {
+            for(let c=0; c<8; c++) {
+                if(state[r][c] !== '' && my.includes(state[r][c])) {
+                    // LUẬT TỐT CHUẨN
+                    if(state[r][c] === '♙' || state[r][c] === '♟') {
+                        let d = turn === 'w' ? -1 : 1;
+                        // Đi thẳng
+                        if(state[r+d] && state[r+d][c] === '') moves.push({fR:r, fC:c, tR:r+d, tC:c, cap:false});
+                        // Ăn chéo (Chỉ khi có địch)
+                        if(state[r+d] && state[r+d][c-1] && enemy.includes(state[r+d][c-1])) moves.push({fR:r, fC:c, tR:r+d, tC:c-1, cap:true});
+                        if(state[r+d] && state[r+d][c+1] && enemy.includes(state[r+d][c+1])) moves.push({fR:r, fC:c, tR:r+d, tC:c+1, cap:true});
+                    } else {
+                        // Quân khác nhảy ngẫu nhiên đúng ô
+                        let tr = Math.max(0, Math.min(7, r + (Math.random() > 0.5 ? 1 : -1)));
+                        let tc = Math.max(0, Math.min(7, c + (Math.random() > 0.5 ? 1 : -1)));
+                        moves.push({fR:r, fC:c, tR:tr, tC:tc, cap: enemy.includes(state[tr][tc])});
+                    }
+                }
+            }
+        }
+
+        const m = moves[Math.floor(Math.random()*moves.length)];
+        let txt = m.cap ? scripts.capt[Math.floor(Math.random()*scripts.capt.length)] : scripts[turn][Math.floor(Math.random()*scripts[turn].length)];
+        
+        state[m.tR][m.tC] = state[m.fR][m.fC];
+        state[m.fR][m.fC] = '';
+        
+        draw(m.fR, m.fC, m.tR, m.tC, m.cap);
+        speak(txt, turn);
+        turn = turn === 'w' ? 'b' : 'w';
+        engine();
+    }
+
+    function timer() {
+        if(!isLive) return;
+        clock[turn]--;
+        const f = (s) => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+        document.getElementById('t-white').innerText = f(clock.w);
+        document.getElementById('t-black').innerText = f(clock.b);
+        setTimeout(timer, 1000);
+    }
+
+    document.getElementById('master-control').onclick = function() {
+        if(!isLive) {
+            isLive = true;
+            this.innerText = "SHUTDOWN SYSTEM";
+            this.style.background = "red";
+            timer(); engine();
+        } else { location.reload(); }
+    };
+    draw();
+</script>
+</body>
+</html>
